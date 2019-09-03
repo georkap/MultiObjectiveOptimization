@@ -114,6 +114,6 @@ venv.bak/
 
 # Project specific symlinks or dirs
 
-configs.json
-sample.json
-runs
+multi_task/configs.json
+multi_task/sample.json
+multi_task/runs/
