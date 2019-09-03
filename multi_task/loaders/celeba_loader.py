@@ -28,7 +28,7 @@ class CELEBA(data.Dataset):
         self.files = {}
         self.labels = {}
 
-        self.label_file = self.root+"/Anno/list_attr_celeba.txt"
+        self.label_file = self.root+"\\Anno\\list_attr_celeba.txt"
         label_map = {}
         with open(self.label_file, 'r') as l_file:
             labels = l_file.read().split('\n')[2:-1]
@@ -37,8 +37,9 @@ class CELEBA(data.Dataset):
             label_txt = list(map(lambda x:int(x), re.sub('-1','0',label_line).split()[1:]))
             label_map[f_name]=label_txt
 
-        self.all_files = glob.glob(self.root+'/Img/img_align_celeba_png/*.png')
-        with open(root+'//Eval/list_eval_partition.txt', 'r') as f:
+        self.all_files = glob.glob(self.root+'\\Img\\img_align_celeba_png\\*.png')
+        # self.all_files = glob.glob(os.path.join(self.root, 'Img', 'img_align_celeba_png') + '*.png')
+        with open(root+'\\Eval\\list_eval_partition.txt', 'r') as f:
             fl = f.read().split('\n')
             fl.pop()
             if 'train' in self.split:
@@ -49,9 +50,9 @@ class CELEBA(data.Dataset):
                 selected_files =  list(filter(lambda x:x.split(' ')[1]=='2', fl))
             selected_file_names = list(map(lambda x:re.sub('jpg', 'png', x.split(' ')[0]), selected_files))
         
-        base_path = '/'.join(self.all_files[0].split('/')[:-1])
-        self.files[self.split] = list(map(lambda x: '/'.join([base_path, x]), set(map(lambda x:x.split('/')[-1], self.all_files)).intersection(set(selected_file_names))))
-        self.labels[self.split] = list(map(lambda x: label_map[x], set(map(lambda x:x.split('/')[-1], self.all_files)).intersection(set(selected_file_names))))
+        base_path = '\\'.join(self.all_files[0].split('\\')[:-1])
+        self.files[self.split] = list(map(lambda x: '\\'.join([base_path, x]), set(map(lambda x:x.split('\\')[-1], self.all_files)).intersection(set(selected_file_names))))
+        self.labels[self.split] = list(map(lambda x: label_map[x], set(map(lambda x:x.split('\\')[-1], self.all_files)).intersection(set(selected_file_names))))
         self.class_names = ['5_o_Clock_Shadow', 'Arched_Eyebrows', 'Attractive', 'Bags_Under_Eyes', 'Bald', 'Bangs',
                                 'Big_Lips', 'Big_Nose', 'Black_Hair', 'Blond_Hair', 'Blurry', 'Brown_Hair', 'Bushy_Eyebrows',      
                                 'Chubby', 'Double_Chin', 'Eyeglasses', 'Goatee', 'Gray_Hair', 'Heavy_Makeup', 'High_Cheekbones',       
@@ -106,12 +107,13 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
 
-    local_path = 'CELEB_A_PATH'
+    local_path = r'X:\Shared datasets\CELEBA'
     dst = CELEBA(local_path, is_transform=True, augmentations=None)
     bs = 4
     trainloader = data.DataLoader(dst, batch_size=bs, num_workers=0)
 
     for i, data in enumerate(trainloader):
+        imgs = data[0]
         imgs = imgs.numpy()[:, ::-1, :, :]
         imgs = np.transpose(imgs, [0,2,3,1])
 

@@ -18,19 +18,20 @@ import types
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 
-from models.gradient_scaler import MinNormElement
+# from models.gradient_scaler import MinNormElement
 import losses
 import datasets
 import metrics
 import model_selector
 from min_norm_solvers import MinNormSolver, gradient_normalizers
+import os
 
 NUM_EPOCHS = 100
 
 @click.command()
 @click.option('--param_file', default='params.json', help='JSON parameters file')
 def train_multi_task(param_file):
-    with open('configs.json') as config_params:
+    with open('..\\configs.json') as config_params:
         configs = json.load(config_params)
 
     with open(param_file) as json_params:
@@ -41,12 +42,17 @@ def train_multi_task(param_file):
     for (key, val) in params.items():
         if 'tasks' in key:
             continue
+        if 'scales' in key:
+            continue
         exp_identifier+= ['{}={}'.format(key,val)]
 
-    exp_identifier = '|'.join(exp_identifier)
+    exp_identifier = '&'.join(exp_identifier)
     params['exp_id'] = exp_identifier
 
-    writer = SummaryWriter(log_dir='runs/{}_{}'.format(params['exp_id'], datetime.datetime.now().strftime("%I:%M%p on %B %d, %Y")))
+    log_dir = os.path.join('runs','{}_{}'.format(params['exp_id'], datetime.datetime.now().strftime("%I%M%p on %B %d, %Y")))
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    writer = SummaryWriter(log_dir=log_dir)
 
     train_loader, train_dst, val_loader, val_dst = datasets.get_dataset(params, configs)
     loss_fn = losses.get_loss(params)
@@ -113,9 +119,10 @@ def train_multi_task(param_file):
 
                 if approximate_norm_solution:
                     optimizer.zero_grad()
-                    # First compute representations (z)
-                    images_volatile = Variable(images.data, volatile=True)
-                    rep, mask = model['rep'](images_volatile, mask)
+                    with torch.no_grad():
+                        # First compute representations (z)
+                        images_volatile = Variable(images.data, volatile=True)
+                        rep, mask = model['rep'](images_volatile, mask)
                     # As an approximate solution we only need gradients for input
                     if isinstance(rep, list):
                         # This is a hack to handle psp-net
@@ -131,7 +138,7 @@ def train_multi_task(param_file):
                         optimizer.zero_grad()
                         out_t, masks[t] = model[t](rep_variable, None)
                         loss = loss_fn[t](out_t, labels[t])
-                        loss_data[t] = loss.data[0]
+                        loss_data[t] = loss.data.item()
                         loss.backward()
                         grads[t] = []
                         if list_rep:
@@ -148,7 +155,7 @@ def train_multi_task(param_file):
                         rep, mask = model['rep'](images, mask)
                         out_t, masks[t] = model[t](rep, None)
                         loss = loss_fn[t](out_t, labels[t])
-                        loss_data[t] = loss.data[0]
+                        loss_data[t] = loss.data.item()
                         loss.backward()
                         grads[t] = []
                         for param in model['rep'].parameters():
@@ -176,7 +183,7 @@ def train_multi_task(param_file):
             for i, t in enumerate(tasks):
                 out_t, _ = model[t](rep, masks[t])
                 loss_t = loss_fn[t](out_t, labels[t])
-                loss_data[t] = loss_t.data[0]
+                loss_data[t] = loss_t.item()
                 if i > 0:
                     loss = loss + scale[t]*loss_t
                 else:
@@ -184,47 +191,48 @@ def train_multi_task(param_file):
             loss.backward()
             optimizer.step()
 
-            writer.add_scalar('training_loss', loss.data[0], n_iter)
+            writer.add_scalar('training_loss', loss.item(), n_iter)
             for t in tasks:
                 writer.add_scalar('training_loss_{}'.format(t), loss_data[t], n_iter)
 
-        for m in model:
-            model[m].eval()
+        with torch.no_grad():
+            for m in model:
+                model[m].eval()
 
-        tot_loss = {}
-        tot_loss['all'] = 0.0
-        met = {}
-        for t in tasks:
-            tot_loss[t] = 0.0
-            met[t] = 0.0
-
-        num_val_batches = 0
-        for batch_val in val_loader:
-            val_images = Variable(batch_val[0].cuda(), volatile=True)
-            labels_val = {}
-
-            for i, t in enumerate(all_tasks):
-                if t not in tasks:
-                    continue
-                labels_val[t] = batch_val[i+1]
-                labels_val[t] = Variable(labels_val[t].cuda(), volatile=True)
-
-            val_rep, _ = model['rep'](val_images, None)
+            tot_loss = {}
+            tot_loss['all'] = 0.0
+            met = {}
             for t in tasks:
-                out_t_val, _ = model[t](val_rep, None)
-                loss_t = loss_fn[t](out_t_val, labels_val[t])
-                tot_loss['all'] += loss_t.data[0]
-                tot_loss[t] += loss_t.data[0]
-                metric[t].update(out_t_val, labels_val[t])
-            num_val_batches+=1
+                tot_loss[t] = 0.0
+                met[t] = 0.0
 
-        for t in tasks:
-            writer.add_scalar('validation_loss_{}'.format(t), tot_loss[t]/num_val_batches, n_iter)
-            metric_results = metric[t].get_result()
-            for metric_key in metric_results:
-                writer.add_scalar('metric_{}_{}'.format(metric_key, t), metric_results[metric_key], n_iter)
-            metric[t].reset()
-        writer.add_scalar('validation_loss', tot_loss['all']/len(val_dst), n_iter)
+            num_val_batches = 0
+            for batch_val in val_loader:
+                val_images = Variable(batch_val[0].cuda(), volatile=True)
+                labels_val = {}
+
+                for i, t in enumerate(all_tasks):
+                    if t not in tasks:
+                        continue
+                    labels_val[t] = batch_val[i+1]
+                    labels_val[t] = Variable(labels_val[t].cuda(), volatile=True)
+
+                val_rep, _ = model['rep'](val_images, None)
+                for t in tasks:
+                    out_t_val, _ = model[t](val_rep, None)
+                    loss_t = loss_fn[t](out_t_val, labels_val[t])
+                    tot_loss['all'] += loss_t.item()
+                    tot_loss[t] += loss_t.item()
+                    metric[t].update(out_t_val, labels_val[t])
+                num_val_batches+=1
+
+            for t in tasks:
+                writer.add_scalar('validation_loss_{}'.format(t), tot_loss[t]/num_val_batches, n_iter)
+                metric_results = metric[t].get_result()
+                for metric_key in metric_results:
+                    writer.add_scalar('metric_{}_{}'.format(metric_key, t), metric_results[metric_key], n_iter)
+                metric[t].reset()
+            writer.add_scalar('validation_loss', tot_loss['all']/len(val_dst), n_iter)
 
         if epoch % 3 == 0:
             # Save after every 3 epoch
