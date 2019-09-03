@@ -49,7 +49,7 @@ def train_multi_task(param_file):
     exp_identifier = '&'.join(exp_identifier)
     params['exp_id'] = exp_identifier
 
-    log_dir = os.path.join('runs','{}_{}'.format(params['exp_id'], datetime.datetime.now().strftime("%I%M%p on %B %d, %Y")))
+    log_dir = os.path.join('runs','{}_{}'.format(params['exp_id'], datetime.datetime.now().strftime("%H%M-%d%m%y")))
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     writer = SummaryWriter(log_dir=log_dir)
