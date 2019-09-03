@@ -70,6 +70,7 @@ def train_multi_task(param_file):
     elif 'SGD' in params['optimizer']:
         optimizer = torch.optim.SGD(model_params, lr=params['lr'], momentum=0.9)
 
+    # tasks = params['tasks']
     tasks = params['tasks']
     all_tasks = configs[params['dataset']]['all_tasks']
     print('Starting training with parameters \n \t{} \n'.format(str(params)))
